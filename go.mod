@@ -1,4 +1,4 @@
-module panneaupocket
+module ppparsser
 
 go 1.22.5
 
