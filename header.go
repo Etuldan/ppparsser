@@ -22,20 +22,13 @@ func NewHeader(n *html.Node) *Header {
 
 type fn func(n *html.Node)
 
-func (h *Header) SetTitle(n *html.Node, key string, val string) {
-	for _, p := range n.Attr {
-		if h.Title == "" && p.Key == key && p.Val == val {
-			h.Title = n.FirstChild.Data
-			return
-		}
-	}
-}
-
-func (h *Header) ExecuteOnTarget(n *html.Node, key string, val string, f fn) {
-	for _, p := range n.Attr {
-		if p.Key == key && p.Val == val {
-			f(n)
-			return
+func (h *Header) ExecuteOnTarget(n *html.Node, el string, key string, val string, f fn) {
+	if n.Type == html.ElementNode && n.Data == el {
+		for _, p := range n.Attr {
+			if p.Key == key && p.Val == val {
+				f(n)
+				return
+			}
 		}
 	}
 }
@@ -49,10 +42,8 @@ func (h *Header) AddArticle(n *html.Node) {
 }
 
 func (h *Header) getAllElements(n *html.Node) {
-	if n.Type == html.ElementNode && n.Data == "div" {
-		h.ExecuteOnTarget(n, "class", "sign-carousel--item sign-carousel--item--active", h.AddArticle)
-		h.ExecuteOnTarget(n, "class", "sign-carousel--item ", h.AddArticle)
-	}
+	h.ExecuteOnTarget(n, "div", "class", "sign-carousel--item sign-carousel--item--active", h.AddArticle) // TODO
+	h.ExecuteOnTarget(n, "div", "class", "sign-carousel--item ", h.AddArticle)
 
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		h.getAllElements(c)
