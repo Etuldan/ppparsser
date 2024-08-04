@@ -50,7 +50,7 @@ func (c *City) Populate(local bool) error {
 }
 
 func (c *City) readCSV() error {
-	file, err := os.Open("data/base-officielle-codes-postaux.csv")
+	file, err := os.Open("./data/base-officielle-codes-postaux.csv")
 	if err != nil {
 		return fmt.Errorf("error while reading the file : %s", err)
 	}
@@ -73,7 +73,7 @@ func (c *City) readCSV() error {
 func (c *City) GetIdFromPP(local bool) error {
 	var data []byte
 	if local {
-		file, err := os.ReadFile("data/pp-city.json")
+		file, err := os.ReadFile("./data/pp-city.json")
 		if err != nil {
 			return fmt.Errorf("error while reading the file : %s", err)
 		}
