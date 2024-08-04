@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"unicode"
 
@@ -17,35 +19,80 @@ type City struct {
 	Id       int    `json:"id"`
 	Name     string `json:"name"`
 	Postcode string `json:"postcode"`
+	Insee    string
 }
 
-func NewCity(insee string) (*City, error) {
-	city := &City{}
-	name, err := city.queryLaposte("nom_de_la_commune", insee)
-	if err != nil {
-		return nil, err
-	}
-	city.Name = name
-	postcode, err := city.queryLaposte("code_postal", insee)
-	if err != nil {
-		return nil, err
-	}
-	city.Postcode = postcode
-	return city, nil
+func NewCity(insee string) *City {
+	city := &City{Insee: insee}
+
+	return city
 }
 
-func (c *City) GetIdFromPP() error {
-	resp, err := http.Get("https://app.panneaupocket.com/public-api/city")
-	if err != nil {
-		return fmt.Errorf("error while accessing city api")
+func (c *City) Populate(local bool) error {
+	if local {
+		err := c.readCSV()
+		if err != nil {
+			return err
+		}
+	} else {
+		name, err := c.queryLaposte("nom_de_la_commune")
+		if err != nil {
+			return err
+		}
+		c.Name = name
+		postcode, err := c.queryLaposte("code_postal")
+		if err != nil {
+			return err
+		}
+		c.Postcode = postcode
 	}
-	body, err := io.ReadAll(resp.Body)
+	return nil
+}
+
+func (c *City) readCSV() error {
+	file, err := os.Open("data/base-officielle-codes-postaux.csv")
 	if err != nil {
-		return fmt.Errorf("error while reading city api")
+		return fmt.Errorf("error while reading the file : %s", err)
 	}
+	defer file.Close()
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return fmt.Errorf("error reading records : %s", err)
+	}
+	for _, line := range records {
+		if line[0] == c.Insee {
+			c.Name = line[1]
+			c.Postcode = line[2]
+			return nil
+		}
+	}
+	return fmt.Errorf("no city found %s", c.Insee)
+}
+
+func (c *City) GetIdFromPP(local bool) error {
+	var data []byte
+	if local {
+		file, err := os.ReadFile("data/pp-city.json")
+		if err != nil {
+			return fmt.Errorf("error while reading the file : %s", err)
+		}
+		data = file
+	} else {
+		resp, err := http.Get("https://app.panneaupocket.com/public-api/city")
+		if err != nil {
+			return fmt.Errorf("error while accessing city api : %s", err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("error while reading city api : %s", err)
+		}
+		data = []byte(body)
+		defer resp.Body.Close()
+	}
+
 	var cities []City
-	json.Unmarshal([]byte(body), &cities)
-	defer resp.Body.Close()
+	json.Unmarshal(data, &cities)
 
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	for _, city := range cities {
@@ -60,23 +107,23 @@ func (c *City) GetIdFromPP() error {
 			}
 		}
 	}
-	return fmt.Errorf("city not found")
+	return fmt.Errorf("city not found %s %s", c.Postcode, c.Name)
 }
 
-func (c *City) queryLaposte(field string, value string) (string, error) {
-	requestUrl := fmt.Sprintf("https://datanova.laposte.fr/data-fair/api/v1/datasets/laposte-hexasmal/values/%s?size=1&q_fields=code_commune_insee&qs=%s", field, value)
+func (c *City) queryLaposte(field string) (string, error) {
+	requestUrl := fmt.Sprintf("https://datanova.laposte.fr/data-fair/api/v1/datasets/laposte-hexasmal/values/%s?size=1&q_fields=code_commune_insee&qs=%s", field, c.Insee)
 	resp, err := http.Get(requestUrl)
 	if err != nil {
-		return "", fmt.Errorf("error while accessing laposte api")
+		return "", fmt.Errorf("error while accessing laposte api : %s", err)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error while reading laposte api")
+		return "", fmt.Errorf("error while reading laposte api : %s", err)
 	}
 	var cities []string
 	json.Unmarshal([]byte(body), &cities)
 	if len(cities) == 0 {
-		return "", fmt.Errorf("invalid insee")
+		return "", fmt.Errorf("no data found on laposte api for %s %s", field, c.Insee)
 	}
 	return cities[0], nil
 }
